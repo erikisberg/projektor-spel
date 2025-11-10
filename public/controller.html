@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Pong - Mobile Controller</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background: #000;
+      color: #fff;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      touch-action: none;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #connectionStatus {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #fff;
+      z-index: 1000;
+    }
+
+    #connectionStatus.disconnected {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    /* Queue Screen */
+    #queueScreen {
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100%;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #queueScreen.show {
+      display: flex;
+    }
+
+    #queueScreen h1 {
+      font-size: 36px;
+      font-weight: 300;
+      margin-bottom: 60px;
+      letter-spacing: 4px;
+    }
+
+    #queuePosition {
+      font-size: 96px;
+      font-weight: 200;
+      margin: 40px 0;
+      letter-spacing: 2px;
+      animation: pulse 2s infinite;
+    }
+
+    #queueScreen p {
+      font-size: 18px;
+      font-weight: 300;
+      opacity: 0.6;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* Lobby Screen */
+    #lobbyScreen {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    #lobbyScreen.show {
+      display: flex;
+    }
+
+    #lobbyInfo {
+      padding: 40px 30px;
+      text-align: center;
+      background: #000;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    #lobbyInfo h2 {
+      font-size: 24px;
+      font-weight: 300;
+      margin-bottom: 10px;
+      letter-spacing: 2px;
+    }
+
+    #teamInfo {
+      font-size: 16px;
+      font-weight: 300;
+      margin-top: 10px;
+      letter-spacing: 3px;
+      opacity: 0.7;
+    }
+
+    #readyButton {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 48px;
+      font-weight: 300;
+      letter-spacing: 6px;
+      background: #000;
+      border: 2px solid #fff;
+      margin: 20px;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.3s ease;
+    }
+
+    #readyButton:active {
+      transform: scale(0.98);
+    }
+
+    #readyButton.ready {
+      background: #fff;
+      color: #000;
+      font-weight: 400;
+    }
+
+    #readyInstructions {
+      padding: 30px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 300;
+      line-height: 1.6;
+      opacity: 0.6;
+    }
+
+    /* Game Screen */
+    #gameScreen {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    #gameScreen.show {
+      display: flex;
+    }
+
+    #gameInfo {
+      padding: 30px;
+      text-align: center;
+      font-size: 16px;
+      font-weight: 300;
+      letter-spacing: 2px;
+      background: #000;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    #touchPad {
+      flex: 1;
+      position: relative;
+      background: #000;
+      border: 2px solid #fff;
+      margin: 20px;
+    }
+
+    #paddleVisual {
+      position: absolute;
+      left: 50%;
+      width: 20px;
+      height: 80px;
+      background: #fff;
+      transform: translateX(-50%);
+      pointer-events: none;
+      transition: top 0.05s ease-out;
+    }
+
+    #instructions {
+      padding: 30px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 300;
+      opacity: 0.6;
+      line-height: 1.6;
+    }
+
+    /* Connecting Screen */
+    #connectingScreen {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100%;
+      font-size: 18px;
+      font-weight: 300;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #connectingScreen.hidden {
+      display: none;
+    }
+
+    .spinner {
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      border-top: 2px solid #fff;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 20px 0;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="connectionStatus"></div>
+
+  <!-- Connecting Screen -->
+  <div id="connectingScreen">
+    <div class="spinner"></div>
+    <div style="animation: pulse 2s infinite; margin-top: 20px;">CONNECTING</div>
+    <div id="waitingCountdown" style="font-size: 48px; margin-top: 40px; font-weight: 200; display: none;"></div>
+  </div>
+
+  <!-- Queue Screen -->
+  <div id="queueScreen">
+    <h1>IN QUEUE</h1>
+    <div id="queuePosition">#1</div>
+    <p>WAITING FOR YOUR TURN</p>
+  </div>
+
+  <!-- Lobby Screen -->
+  <div id="lobbyScreen">
+    <div id="lobbyInfo">
+      <h2 id="playerName">PLAYER</h2>
+      <div id="teamInfo">TEAM LEFT</div>
+      <div id="lobbyCountdown" style="font-size: 36px; margin-top: 20px; font-weight: 200; display: none;"></div>
+    </div>
+    <div id="readyButton">READY</div>
+    <div id="readyInstructions">
+      Tap when ready to play<br>
+      <span id="readyInfo">Game starts when all players are ready</span>
+    </div>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="gameScreen">
+    <div id="gameInfo">
+      <div id="playerIndicator">YOUR PADDLE</div>
+    </div>
+    <div id="touchPad">
+      <div id="paddleVisual"></div>
+    </div>
+    <div id="instructions">
+      Touch or drag to move your paddle
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let playerSlot = null;
+    let isReady = false;
+    let currentScreen = 'connecting';
+    let paddleHeight = 100;
+    let gameHeight = 600;
+    let touchActive = false;
+
+    const connectionStatus = document.getElementById('connectionStatus');
+    const connectingScreen = document.getElementById('connectingScreen');
+    const queueScreen = document.getElementById('queueScreen');
+    const lobbyScreen = document.getElementById('lobbyScreen');
+    const gameScreen = document.getElementById('gameScreen');
+
+    const readyButton = document.getElementById('readyButton');
+    const touchPad = document.getElementById('touchPad');
+    const paddleVisual = document.getElementById('paddleVisual');
+
+    function showScreen(screen) {
+      currentScreen = screen;
+
+      connectingScreen.classList.add('hidden');
+      queueScreen.classList.remove('show');
+      lobbyScreen.classList.remove('show');
+      gameScreen.classList.remove('show');
+
+      switch(screen) {
+        case 'connecting':
+          connectingScreen.classList.remove('hidden');
+          break;
+        case 'queue':
+          queueScreen.classList.add('show');
+          break;
+        case 'lobby':
+          lobbyScreen.classList.add('show');
+          break;
+        case 'game':
+          gameScreen.classList.add('show');
+          break;
+      }
+    }
+
+    // Connection status
+    socket.on('connect', () => {
+      connectionStatus.classList.remove('disconnected');
+      socket.emit('joinGame', {});
+    });
+
+    socket.on('disconnect', () => {
+      connectionStatus.classList.add('disconnected');
+      showScreen('connecting');
+    });
+
+    // Queue updates
+    socket.on('queueUpdate', (data) => {
+      showScreen('queue');
+      document.getElementById('queuePosition').textContent = `#${data.position}`;
+    });
+
+    // Player assigned to lobby
+    socket.on('playerAssigned', (data) => {
+      playerSlot = data.slot;
+      paddleHeight = data.paddle.height;
+      isReady = false;
+
+      const team = data.paddle.team;
+      const position = playerSlot.includes('1') ? '1' : '2';
+
+      document.getElementById('playerName').textContent = `PLAYER ${position}`;
+      document.getElementById('teamInfo').textContent = `TEAM ${team.toUpperCase()}`;
+
+      readyButton.classList.remove('ready');
+      readyButton.textContent = 'READY';
+
+      showScreen('lobby');
+    });
+
+    // Lobby updates
+    socket.on('lobbyUpdate', (data) => {
+      if (playerSlot) {
+        const ourPlayer = data.players.find(p => p.slot === playerSlot);
+        if (ourPlayer) {
+          isReady = ourPlayer.ready;
+          if (isReady) {
+            readyButton.classList.add('ready');
+            readyButton.textContent = 'READY';
+          } else {
+            readyButton.classList.remove('ready');
+            readyButton.textContent = 'READY';
+          }
+        }
+      }
+    });
+
+    // Ready button
+    readyButton.addEventListener('click', () => {
+      socket.emit('toggleReady');
+    });
+
+    // Game start
+    socket.on('gameStart', () => {
+      showScreen('game');
+    });
+
+    // Lobby timer
+    socket.on('lobbyTimer', (data) => {
+      const waitingCountdownEl = document.getElementById('waitingCountdown');
+      const lobbyCountdownEl = document.getElementById('lobbyCountdown');
+
+      if (data.countdown > 0) {
+        const text = `STARTING IN ${data.countdown}S`;
+
+        // Show on connecting screen if visible
+        if (currentScreen === 'connecting') {
+          waitingCountdownEl.textContent = text;
+          waitingCountdownEl.style.display = 'block';
+        }
+
+        // Show on lobby screen if visible
+        if (currentScreen === 'lobby') {
+          lobbyCountdownEl.textContent = text;
+          lobbyCountdownEl.style.display = 'block';
+        }
+      } else {
+        waitingCountdownEl.style.display = 'none';
+        lobbyCountdownEl.style.display = 'none';
+      }
+    });
+
+    // Touch controls
+    function handleTouch(event) {
+      event.preventDefault();
+
+      if (currentScreen !== 'game' || !playerSlot) return;
+
+      const touch = event.touches ? event.touches[0] : event;
+      const rect = touchPad.getBoundingClientRect();
+      const touchY = touch.clientY - rect.top;
+      const relativeY = touchY / rect.height;
+
+      // Calculate paddle position
+      const paddleY = Math.max(0, Math.min(gameHeight - paddleHeight, relativeY * gameHeight - paddleHeight / 2));
+
+      // Update visual feedback
+      const visualY = (paddleY / (gameHeight - paddleHeight)) * (rect.height - 80);
+      paddleVisual.style.top = `${visualY}px`;
+
+      // Send to server (throttled)
+      if (!touchActive) {
+        touchActive = true;
+        requestAnimationFrame(() => {
+          socket.emit('move', { y: paddleY });
+          touchActive = false;
+        });
+      }
+    }
+
+    touchPad.addEventListener('touchstart', handleTouch, { passive: false });
+    touchPad.addEventListener('touchmove', handleTouch, { passive: false });
+    touchPad.addEventListener('mousedown', handleTouch);
+    touchPad.addEventListener('mousemove', (e) => {
+      if (e.buttons === 1) handleTouch(e);
+    });
+
+    // Prevent scrolling
+    document.body.addEventListener('touchmove', (e) => {
+      if (currentScreen === 'game') {
+        e.preventDefault();
+      }
+    }, { passive: false });
+  </script>
+</body>
+</html>

@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pong - Projector Display</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    #gameContainer {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      border: 4px solid #fff;
+    }
+
+    canvas {
+      display: block;
+      background: #000;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    #adeprimoLogo {
+      position: absolute;
+      top: 2vh;
+      left: 2vw;
+      height: 6vh;
+      opacity: 0.9;
+      z-index: 100;
+    }
+
+    /* Waiting Screen */
+    #waitingScreen {
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      height: 100%;
+      color: #fff;
+    }
+
+    #waitingScreen.show {
+      display: flex;
+    }
+
+    #waitingScreen h1 {
+      font-size: 72px;
+      font-weight: 300;
+      margin-bottom: 40px;
+      letter-spacing: 8px;
+    }
+
+    #waitingScreen p {
+      font-size: 24px;
+      font-weight: 300;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* Lobby Screen */
+    #lobbyScreen {
+      display: none;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      color: #fff;
+    }
+
+    #lobbyScreen.show {
+      display: flex;
+    }
+
+    #lobbyScreen h1 {
+      font-size: 36px;
+      font-weight: 300;
+      text-align: center;
+      padding: 40px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      letter-spacing: 2px;
+    }
+
+    #playerList {
+      flex: 1;
+      display: flex;
+      padding: 40px;
+      gap: 40px;
+    }
+
+    .team-column {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .team-column h2 {
+      font-size: 24px;
+      font-weight: 400;
+      text-align: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      letter-spacing: 3px;
+    }
+
+    .player-slot {
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 2px;
+      font-size: 20px;
+      font-weight: 300;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    .player-slot.ready {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+      font-weight: 400;
+    }
+
+    #readyStatus {
+      text-align: center;
+      padding: 30px;
+      font-size: 28px;
+      font-weight: 300;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+      letter-spacing: 2px;
+    }
+
+    /* Game Screen */
+    #gameScreen {
+      display: none;
+      width: 100%;
+      height: 100%;
+    }
+
+    #gameScreen.show {
+      display: block;
+    }
+
+    #scoreBoard {
+      position: absolute;
+      top: 4vh;
+      width: 100%;
+      display: flex;
+      justify-content: space-around;
+      color: #fff;
+      font-size: 8vw;
+      font-weight: 200;
+      pointer-events: none;
+      letter-spacing: 0.5vw;
+    }
+
+    /* Game Over Screen */
+    #gameOverScreen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.95);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      color: #fff;
+    }
+
+    #gameOverScreen.show {
+      display: flex;
+    }
+
+    #winnerText {
+      font-size: 6vw;
+      font-weight: 300;
+      letter-spacing: 0.3vw;
+      animation: winner-pulse 0.5s ease-in-out 3;
+      text-align: center;
+      padding: 0 2vw;
+    }
+
+    @keyframes winner-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+
+    #gameOverScreen .subtitle {
+      font-size: 2vw;
+      font-weight: 300;
+      margin-top: 3vh;
+      animation: pulse 1.5s infinite;
+    }
+
+    #explosionCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .centerLine {
+      stroke: rgba(255, 255, 255, 0.15);
+      stroke-width: 1;
+      stroke-dasharray: 10, 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <img id="adeprimoLogo" src="/adeprimo_logo.svg" alt="Adeprimo">
+
+    <!-- Waiting Screen -->
+    <div id="waitingScreen">
+      <h1>PONG</h1>
+      <p id="waitingText">Waiting for players...</p>
+      <div id="countdown" style="font-size: 64px; margin-top: 40px; font-weight: 200; display: none;"></div>
+    </div>
+
+    <!-- Lobby Screen -->
+    <div id="lobbyScreen">
+      <h1 id="lobbyTitle">READY TO PLAY</h1>
+      <div id="playerList">
+        <div class="team-column left">
+          <h2>TEAM LEFT</h2>
+          <div class="player-slot" data-slot="left1">Player 1</div>
+          <div class="player-slot" data-slot="left2">Player 2</div>
+        </div>
+        <div class="team-column right">
+          <h2>TEAM RIGHT</h2>
+          <div class="player-slot" data-slot="right1">Player 3</div>
+          <div class="player-slot" data-slot="right2">Player 4</div>
+        </div>
+      </div>
+      <div id="readyStatus">READY: 0/4</div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="gameScreen">
+      <canvas id="gameCanvas" width="1920" height="1080"></canvas>
+      <div id="scoreBoard">
+        <span id="leftScore">0</span>
+        <span id="rightScore">0</span>
+      </div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameOverScreen">
+      <canvas id="explosionCanvas"></canvas>
+      <div id="winnerText">TEAM LEFT WINS</div>
+      <div class="subtitle">Next players loading...</div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let gameState = null;
+    let currentState = 'WAITING';
+
+    // Screen elements
+    const waitingScreen = document.getElementById('waitingScreen');
+    const lobbyScreen = document.getElementById('lobbyScreen');
+    const gameScreen = document.getElementById('gameScreen');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+
+    function showScreen(state) {
+      currentState = state;
+
+      waitingScreen.classList.remove('show');
+      lobbyScreen.classList.remove('show');
+      gameScreen.classList.remove('show');
+      gameOverScreen.classList.remove('show');
+
+      switch(state) {
+        case 'WAITING':
+          waitingScreen.classList.add('show');
+          break;
+        case 'LOBBY':
+          lobbyScreen.classList.add('show');
+          break;
+        case 'PLAYING':
+          gameScreen.classList.add('show');
+          break;
+        case 'GAME_OVER':
+          gameOverScreen.classList.add('show');
+          break;
+      }
+    }
+
+    // Socket listeners
+    socket.on('stateChange', (data) => {
+      showScreen(data.state);
+    });
+
+    socket.on('lobbyUpdate', (data) => {
+      document.getElementById('readyStatus').textContent = `READY: ${data.readyCount}/${data.totalPlayers}`;
+
+      // Reset all slots first
+      document.querySelectorAll('.player-slot').forEach(slot => {
+        slot.textContent = 'Empty';
+        slot.classList.remove('ready');
+        slot.style.opacity = '0.3';
+      });
+
+      // Update player slots
+      data.players.forEach(player => {
+        const slot = document.querySelector(`[data-slot="${player.slot}"]`);
+        if (slot) {
+          slot.textContent = player.nickname.toUpperCase();
+          slot.style.opacity = '1';
+          if (player.ready) {
+            slot.classList.add('ready');
+          } else {
+            slot.classList.remove('ready');
+          }
+        }
+      });
+    });
+
+    socket.on('gameStart', () => {
+      showScreen('PLAYING');
+    });
+
+    socket.on('gameState', (state) => {
+      if (currentState === 'PLAYING') {
+        gameState = state;
+        render();
+      }
+    });
+
+    socket.on('score', (score) => {
+      document.getElementById('leftScore').textContent = score.left;
+      document.getElementById('rightScore').textContent = score.right;
+    });
+
+    socket.on('gameOver', (data) => {
+      const winnerText = data.winner === 'left' ? 'TEAM LEFT WINS' : 'TEAM RIGHT WINS';
+      document.getElementById('winnerText').textContent = winnerText;
+      showScreen('GAME_OVER');
+      startExplosion();
+    });
+
+    // Explosion effect
+    function startExplosion() {
+      const explosionCanvas = document.getElementById('explosionCanvas');
+      explosionCanvas.width = window.innerWidth;
+      explosionCanvas.height = window.innerHeight;
+      const ctx = explosionCanvas.getContext('2d');
+
+      const particles = [];
+      const particleCount = 100;
+      const centerX = explosionCanvas.width / 2;
+      const centerY = explosionCanvas.height / 2;
+
+      // Create particles
+      for (let i = 0; i < particleCount; i++) {
+        particles.push({
+          x: centerX,
+          y: centerY,
+          vx: (Math.random() - 0.5) * 20,
+          vy: (Math.random() - 0.5) * 20,
+          radius: Math.random() * 10 + 5,
+          opacity: 1
+        });
+      }
+
+      // Animate particles
+      function animateExplosion() {
+        ctx.clearRect(0, 0, explosionCanvas.width, explosionCanvas.height);
+
+        let anyAlive = false;
+        particles.forEach(p => {
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += 0.3; // Gravity
+          p.opacity -= 0.02;
+
+          if (p.opacity > 0) {
+            anyAlive = true;
+            ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
+
+        if (anyAlive) {
+          requestAnimationFrame(animateExplosion);
+        }
+      }
+
+      animateExplosion();
+    }
+
+    socket.on('lobbyTimer', (data) => {
+      const countdownEl = document.getElementById('countdown');
+      if (data.countdown > 0) {
+        countdownEl.textContent = `Starting in ${data.countdown}s`;
+        countdownEl.style.display = 'block';
+      } else {
+        countdownEl.style.display = 'none';
+      }
+    });
+
+    function render() {
+      if (!gameState || currentState !== 'PLAYING') return;
+
+      // Clear canvas
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw center line
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.setLineDash([10, 10]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Draw paddles (white) - only for active players
+      ctx.fillStyle = '#fff';
+      if (gameState.activeSlots) {
+        gameState.activeSlots.forEach(slot => {
+          const paddle = gameState.paddles[slot];
+          if (paddle) {
+            ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+          }
+        });
+      }
+
+      // Draw ball (white with subtle shadow)
+      ctx.fillStyle = '#fff';
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(gameState.ball.x, gameState.ball.y, gameState.ball.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Animation loop
+    function animate() {
+      if (currentState === 'PLAYING') {
+        render();
+      }
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
