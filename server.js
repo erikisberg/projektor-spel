@@ -8,6 +8,11 @@ const PORT = process.env.PORT || 3000;
 // Serve static files
 app.use(express.static('public'));
 
+// Serve controller on root
+app.get('/', (req, res) => {
+  res.sendFile(__dirname + '/public/controller.html');
+});
+
 // Game states
 const GAME_STATES = {
   WAITING: 'WAITING',     // Less than 4 players

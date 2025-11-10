@@ -244,6 +244,7 @@
     <div id="waitingScreen">
       <h1>PONG</h1>
       <p id="waitingText">Waiting for players...</p>
+      <div id="joinUrl" style="font-size: 6vw; margin-top: 60px; font-weight: 300; letter-spacing: 0.3vw; opacity: 0.9;"></div>
       <div id="countdown" style="font-size: 64px; margin-top: 40px; font-weight: 200; display: none;"></div>
     </div>
 
@@ -290,6 +291,9 @@
 
     let gameState = null;
     let currentState = 'WAITING';
+
+    // Display join URL on waiting screen
+    document.getElementById('joinUrl').textContent = window.location.origin;
 
     // Visual effects
     let ballTrail = [];
