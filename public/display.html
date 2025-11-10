@@ -289,11 +289,20 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
+    // Join display room for optimized broadcasting
+    socket.emit('joinDisplay');
+
     let gameState = null;
     let currentState = 'WAITING';
 
     // Display join URL on waiting screen
     document.getElementById('joinUrl').textContent = window.location.hostname;
+
+    // Performance optimization constants
+    const MAX_PARTICLES = 50;
+    const MAX_SPEED_LINES = 30;
+    const MAX_TRAIL_LENGTH = 15;
+    const SPEED_LINE_INTERVAL = 50; // ms between speed line generation
 
     // Visual effects
     let ballTrail = [];
@@ -302,6 +311,7 @@
     let shakeY = 0;
     let shakeDecay = 0;
     let previousBallVX = 0;
+    let lastSpeedLineTime = 0;
 
     // New effect variables
     let speedLines = [];
@@ -378,52 +388,14 @@
 
     socket.on('gameState', (state) => {
       if (currentState === 'PLAYING') {
-        // Detect paddle collision (ball direction changed)
-        if (gameState && gameState.ball && Math.sign(state.ball.vx) !== Math.sign(previousBallVX) && previousBallVX !== 0) {
-          const speed = Math.sqrt(state.ball.vx * state.ball.vx + state.ball.vy * state.ball.vy);
-
-          // Create particles
-          const particleCount = Math.min(Math.floor(speed / 2), 10);
-          for (let i = 0; i < particleCount; i++) {
-            particles.push({
-              x: state.ball.x,
-              y: state.ball.y,
-              vx: -state.ball.vx * 0.3 + (Math.random() - 0.5) * 3,
-              vy: (Math.random() - 0.5) * 8,
-              radius: Math.random() * 3 + 2,
-              opacity: 1
-            });
-          }
-
-          // Screen shake
-          shakeDecay = Math.min(speed, 15);
-
-          // Impact flash (stronger for faster hits)
-          impactFlash = Math.min(speed / 25, 0.3);
-
-          // Paddle glow - find which paddle was hit
-          const isLeftSide = state.ball.vx > 0;
-          if (state.activeSlots) {
-            state.activeSlots.forEach(slot => {
-              const paddle = state.paddles[slot];
-              if (paddle &&
-                  ((isLeftSide && paddle.team === 'left') ||
-                   (!isLeftSide && paddle.team === 'right'))) {
-                // Check if ball is close to this paddle
-                if (Math.abs(state.ball.y - (paddle.y + paddle.height / 2)) < paddle.height) {
-                  paddleGlows[slot] = { intensity: Math.min(speed / 20, 1.5), decay: 0 };
-                }
-              }
-            });
-          }
-        }
-
-        // Create speed lines based on ball speed
+        // Throttled speed line generation with limits
         if (state.ball) {
           const speed = Math.sqrt(state.ball.vx * state.ball.vx + state.ball.vy * state.ball.vy);
-          if (speed > 15) { // Only show speed lines when fast
-            const lineCount = Math.floor((speed - 15) / 3);
-            for (let i = 0; i < lineCount; i++) {
+          const now = Date.now();
+
+          if (speed > 15 && now - lastSpeedLineTime > SPEED_LINE_INTERVAL && speedLines.length < MAX_SPEED_LINES) {
+            const lineCount = Math.min(Math.floor((speed - 15) / 3), 3);
+            for (let i = 0; i < lineCount && speedLines.length < MAX_SPEED_LINES; i++) {
               speedLines.push({
                 x: state.ball.x + (Math.random() - 0.5) * 200,
                 y: state.ball.y + (Math.random() - 0.5) * 100,
@@ -432,12 +404,60 @@
                 speed: Math.sign(state.ball.vx) * (speed / 5)
               });
             }
+            lastSpeedLineTime = now;
           }
         }
 
         previousBallVX = state.ball.vx;
         gameState = state;
         render();
+      }
+    });
+
+    // Delta compression handler - merge delta with current state
+    socket.on('gameStateDelta', (delta) => {
+      if (currentState === 'PLAYING' && gameState) {
+        // Merge delta into current state
+        if (delta.ball) {
+          gameState.ball = delta.ball;
+        }
+        if (delta.paddles) {
+          Object.keys(delta.paddles).forEach(slot => {
+            gameState.paddles[slot] = delta.paddles[slot];
+          });
+        }
+
+        previousBallVX = gameState.ball.vx;
+        render();
+      }
+    });
+
+    // Server-side collision event handler (eliminates client duplicate detection)
+    socket.on('paddleHit', (data) => {
+      if (currentState === 'PLAYING') {
+        const { slot, x, y, speed } = data;
+
+        // Create particles with limit
+        const particleCount = Math.min(Math.floor(speed / 2), 10);
+        for (let i = 0; i < particleCount && particles.length < MAX_PARTICLES; i++) {
+          particles.push({
+            x,
+            y,
+            vx: (Math.random() - 0.5) * 6,
+            vy: (Math.random() - 0.5) * 8,
+            radius: Math.random() * 3 + 2,
+            opacity: 1
+          });
+        }
+
+        // Screen shake
+        shakeDecay = Math.min(speed, 15);
+
+        // Impact flash (stronger for faster hits)
+        impactFlash = Math.min(speed / 25, 0.3);
+
+        // Paddle glow
+        paddleGlows[slot] = { intensity: Math.min(speed / 20, 1.5), decay: 0 };
       }
     });
 
@@ -536,7 +556,8 @@
       ctx.save();
       ctx.translate(shakeX, shakeY);
 
-      // Clear canvas
+      // Optimized canvas clear - clearRect is faster than fillRect
+      ctx.clearRect(-shakeX, -shakeY, canvas.width, canvas.height);
       ctx.fillStyle = '#000';
       ctx.fillRect(-shakeX, -shakeY, canvas.width, canvas.height);
 
@@ -683,37 +704,39 @@
       }
     }
 
-    // Animation loop
+    // Optimized animation loop - only update when playing
     function animate() {
       if (currentState === 'PLAYING') {
         render();
-      }
 
-      // Update score pulse animation
-      const leftScoreEl = document.getElementById('leftScore');
-      const rightScoreEl = document.getElementById('rightScore');
+        // Update score pulse animation (only when playing)
+        const leftScoreEl = document.getElementById('leftScore');
+        const rightScoreEl = document.getElementById('rightScore');
 
-      if (scorePulse.left > 1) {
-        scorePulse.left -= 0.05;
-        leftScoreEl.style.transform = `scale(${scorePulse.left})`;
-        leftScoreEl.style.textShadow = `0 0 ${(scorePulse.left - 1) * 40}px #fff`;
-      } else {
-        leftScoreEl.style.transform = 'scale(1)';
-        leftScoreEl.style.textShadow = 'none';
-      }
+        if (scorePulse.left > 1) {
+          scorePulse.left -= 0.05;
+          leftScoreEl.style.transform = `scale(${scorePulse.left})`;
+          leftScoreEl.style.textShadow = `0 0 ${(scorePulse.left - 1) * 40}px #fff`;
+        } else if (scorePulse.left !== 1) {
+          scorePulse.left = 1;
+          leftScoreEl.style.transform = 'scale(1)';
+          leftScoreEl.style.textShadow = 'none';
+        }
 
-      if (scorePulse.right > 1) {
-        scorePulse.right -= 0.05;
-        rightScoreEl.style.transform = `scale(${scorePulse.right})`;
-        rightScoreEl.style.textShadow = `0 0 ${(scorePulse.right - 1) * 40}px #fff`;
-      } else {
-        rightScoreEl.style.transform = 'scale(1)';
-        rightScoreEl.style.textShadow = 'none';
-      }
+        if (scorePulse.right > 1) {
+          scorePulse.right -= 0.05;
+          rightScoreEl.style.transform = `scale(${scorePulse.right})`;
+          rightScoreEl.style.textShadow = `0 0 ${(scorePulse.right - 1) * 40}px #fff`;
+        } else if (scorePulse.right !== 1) {
+          scorePulse.right = 1;
+          rightScoreEl.style.transform = 'scale(1)';
+          rightScoreEl.style.textShadow = 'none';
+        }
 
-      // Check slow motion end
-      if (slowMotion && Date.now() > slowMotionEnd) {
-        slowMotion = false;
+        // Check slow motion end
+        if (slowMotion && Date.now() > slowMotionEnd) {
+          slowMotion = false;
+        }
       }
 
       requestAnimationFrame(animate);

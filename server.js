@@ -83,6 +83,11 @@ const LOBBY_COUNTDOWN_TIME = 30; // 30 seconds
 const TICK_RATE = 60;
 const TICK_INTERVAL = 1000 / TICK_RATE;
 
+// Delta compression state tracking
+let previousGameState = null;
+let frameCounter = 0;
+const FULL_STATE_INTERVAL = 60; // Send full state every 60 frames (~1 second)
+
 function updateGame() {
   // Only update physics when playing
   if (gameState.state !== GAME_STATES.PLAYING) return;
@@ -100,11 +105,22 @@ function updateGame() {
     ball.y = Math.max(ball.radius, Math.min(gameState.gameHeight - ball.radius, ball.y));
   }
 
-  // Ball collision with paddles - only check active players
+  // Ball collision with paddles - with spatial culling optimization
   Object.keys(gameState.activePlayers).forEach(slot => {
     const paddle = paddles[slot];
     if (!paddle) return;
 
+    // Spatial culling: only check paddles on the side ball is approaching
+    const ballInLeftHalf = ball.x < gameState.gameWidth / 2;
+    const ballInRightHalf = ball.x >= gameState.gameWidth / 2;
+    const headingLeft = ball.vx < 0;
+    const headingRight = ball.vx > 0;
+
+    // Skip paddle if ball is not heading toward it
+    if (paddle.team === 'left' && (!ballInLeftHalf || !headingLeft)) return;
+    if (paddle.team === 'right' && (!ballInRightHalf || !headingRight)) return;
+
+    // AABB collision detection
     if (ball.x - ball.radius < paddle.x + paddle.width &&
         ball.x + ball.radius > paddle.x &&
         ball.y + ball.radius > paddle.y &&
@@ -134,6 +150,14 @@ function updateGame() {
         ball.vx *= ratio;
         ball.vy *= ratio;
       }
+
+      // Emit collision event for client visual effects
+      io.to('displays').emit('paddleHit', {
+        slot,
+        x: ball.x,
+        y: ball.y,
+        speed: currentSpeed
+      });
     }
   });
 
@@ -150,14 +174,46 @@ function updateGame() {
     checkWin();
   }
 
-  // Emit game state to all clients
-  io.emit('gameState', {
+  // Delta compression: send only changed state
+  frameCounter++;
+  const sendFullState = frameCounter % FULL_STATE_INTERVAL === 0 || !previousGameState;
+
+  if (sendFullState) {
+    // Send full state periodically or on first frame
+    io.to('displays').emit('gameState', {
+      ball: gameState.ball,
+      paddles: gameState.paddles,
+      score: gameState.score,
+      activeSlots: Object.keys(gameState.activePlayers),
+      obstacles: gameState.obstacles
+    });
+  } else {
+    // Send delta (ball always changes, only send paddles that moved)
+    const delta = {
+      ball: gameState.ball  // Ball almost always moves
+    };
+
+    // Check which paddles moved
+    const changedPaddles = {};
+    Object.keys(gameState.paddles).forEach(slot => {
+      if (!previousGameState.paddles[slot] ||
+          gameState.paddles[slot].y !== previousGameState.paddles[slot].y) {
+        changedPaddles[slot] = gameState.paddles[slot];
+      }
+    });
+
+    if (Object.keys(changedPaddles).length > 0) {
+      delta.paddles = changedPaddles;
+    }
+
+    io.to('displays').emit('gameStateDelta', delta);
+  }
+
+  // Store state for next delta comparison
+  previousGameState = JSON.parse(JSON.stringify({
     ball: gameState.ball,
-    paddles: gameState.paddles,
-    score: gameState.score,
-    activeSlots: Object.keys(gameState.activePlayers),
-    obstacles: gameState.obstacles
-  });
+    paddles: gameState.paddles
+  }));
 }
 
 function resetBall(direction) {
@@ -365,6 +421,12 @@ io.on('connection', (socket) => {
   if (lobbyTimer && lobbyCountdown > 0) {
     socket.emit('lobbyTimer', { countdown: lobbyCountdown });
   }
+
+  // Display client joins display room
+  socket.on('joinDisplay', () => {
+    socket.join('displays');
+    console.log(`Display client ${socket.id} joined displays room`);
+  });
 
   // Player wants to join
   socket.on('joinGame', (data) => {
