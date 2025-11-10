@@ -33,6 +33,7 @@ const gameState = {
     right1: { x: 1850, y: 170, width: 30, height: 200, team: 'right' },
     right2: { x: 1850, y: 710, width: 30, height: 200, team: 'right' }
   },
+  obstacles: [],
   score: {
     left: 0,
     right: 0
@@ -119,6 +120,15 @@ function updateGame() {
       } else {
         ball.x = paddle.x - ball.radius;
       }
+
+      // Cap maximum speed to prevent tunneling through paddles
+      const maxSpeed = 25;
+      const currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+      if (currentSpeed > maxSpeed) {
+        const ratio = maxSpeed / currentSpeed;
+        ball.vx *= ratio;
+        ball.vy *= ratio;
+      }
     }
   });
 
@@ -140,7 +150,8 @@ function updateGame() {
     ball: gameState.ball,
     paddles: gameState.paddles,
     score: gameState.score,
-    activeSlots: Object.keys(gameState.activePlayers)
+    activeSlots: Object.keys(gameState.activePlayers),
+    obstacles: gameState.obstacles
   });
 }
 

@@ -62,14 +62,14 @@
     }
 
     #waitingScreen h1 {
-      font-size: 72px;
+      font-size: 15vw;
       font-weight: 300;
       margin-bottom: 40px;
-      letter-spacing: 8px;
+      letter-spacing: 1vw;
     }
 
     #waitingScreen p {
-      font-size: 24px;
+      font-size: 4vw;
       font-weight: 300;
       animation: pulse 2s infinite;
     }
@@ -93,12 +93,12 @@
     }
 
     #lobbyScreen h1 {
-      font-size: 36px;
+      font-size: 6vw;
       font-weight: 300;
       text-align: center;
-      padding: 40px;
+      padding: 30px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-      letter-spacing: 2px;
+      letter-spacing: 0.3vw;
     }
 
     #playerList {
@@ -116,20 +116,20 @@
     }
 
     .team-column h2 {
-      font-size: 24px;
+      font-size: 3vw;
       font-weight: 400;
       text-align: center;
       padding-bottom: 20px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-      letter-spacing: 3px;
+      letter-spacing: 0.2vw;
     }
 
     .player-slot {
-      padding: 20px;
+      padding: 30px;
       background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      border: 2px solid rgba(255, 255, 255, 0.2);
       border-radius: 2px;
-      font-size: 20px;
+      font-size: 2.5vw;
       font-weight: 300;
       text-align: center;
       transition: all 0.3s ease;
@@ -145,10 +145,10 @@
     #readyStatus {
       text-align: center;
       padding: 30px;
-      font-size: 28px;
+      font-size: 3.5vw;
       font-weight: 300;
       border-top: 1px solid rgba(255, 255, 255, 0.2);
-      letter-spacing: 2px;
+      letter-spacing: 0.2vw;
     }
 
     /* Game Screen */
@@ -173,6 +173,11 @@
       font-weight: 200;
       pointer-events: none;
       letter-spacing: 0.5vw;
+    }
+
+    #scoreBoard span {
+      display: inline-block;
+      transition: transform 0.1s ease-out;
     }
 
     /* Game Over Screen */
@@ -286,6 +291,23 @@
     let gameState = null;
     let currentState = 'WAITING';
 
+    // Visual effects
+    let ballTrail = [];
+    let particles = [];
+    let shakeX = 0;
+    let shakeY = 0;
+    let shakeDecay = 0;
+    let previousBallVX = 0;
+
+    // New effect variables
+    let speedLines = [];
+    let paddleGlows = {}; // { slot: { intensity, decay } }
+    let impactFlash = 0;
+    let slowMotion = false;
+    let slowMotionEnd = 0;
+    let lastScore = { left: 0, right: 0 };
+    let scorePulse = { left: 0, right: 0 };
+
     // Screen elements
     const waitingScreen = document.getElementById('waitingScreen');
     const lobbyScreen = document.getElementById('lobbyScreen');
@@ -352,6 +374,64 @@
 
     socket.on('gameState', (state) => {
       if (currentState === 'PLAYING') {
+        // Detect paddle collision (ball direction changed)
+        if (gameState && gameState.ball && Math.sign(state.ball.vx) !== Math.sign(previousBallVX) && previousBallVX !== 0) {
+          const speed = Math.sqrt(state.ball.vx * state.ball.vx + state.ball.vy * state.ball.vy);
+
+          // Create particles
+          const particleCount = Math.min(Math.floor(speed / 2), 10);
+          for (let i = 0; i < particleCount; i++) {
+            particles.push({
+              x: state.ball.x,
+              y: state.ball.y,
+              vx: -state.ball.vx * 0.3 + (Math.random() - 0.5) * 3,
+              vy: (Math.random() - 0.5) * 8,
+              radius: Math.random() * 3 + 2,
+              opacity: 1
+            });
+          }
+
+          // Screen shake
+          shakeDecay = Math.min(speed, 15);
+
+          // Impact flash (stronger for faster hits)
+          impactFlash = Math.min(speed / 25, 0.3);
+
+          // Paddle glow - find which paddle was hit
+          const isLeftSide = state.ball.vx > 0;
+          if (state.activeSlots) {
+            state.activeSlots.forEach(slot => {
+              const paddle = state.paddles[slot];
+              if (paddle &&
+                  ((isLeftSide && paddle.team === 'left') ||
+                   (!isLeftSide && paddle.team === 'right'))) {
+                // Check if ball is close to this paddle
+                if (Math.abs(state.ball.y - (paddle.y + paddle.height / 2)) < paddle.height) {
+                  paddleGlows[slot] = { intensity: Math.min(speed / 20, 1.5), decay: 0 };
+                }
+              }
+            });
+          }
+        }
+
+        // Create speed lines based on ball speed
+        if (state.ball) {
+          const speed = Math.sqrt(state.ball.vx * state.ball.vx + state.ball.vy * state.ball.vy);
+          if (speed > 15) { // Only show speed lines when fast
+            const lineCount = Math.floor((speed - 15) / 3);
+            for (let i = 0; i < lineCount; i++) {
+              speedLines.push({
+                x: state.ball.x + (Math.random() - 0.5) * 200,
+                y: state.ball.y + (Math.random() - 0.5) * 100,
+                length: Math.random() * 40 + 20,
+                opacity: Math.random() * 0.6 + 0.2,
+                speed: Math.sign(state.ball.vx) * (speed / 5)
+              });
+            }
+          }
+        }
+
+        previousBallVX = state.ball.vx;
         gameState = state;
         render();
       }
@@ -360,6 +440,20 @@
     socket.on('score', (score) => {
       document.getElementById('leftScore').textContent = score.left;
       document.getElementById('rightScore').textContent = score.right;
+
+      // Trigger score pulse animation
+      if (score.left > lastScore.left) {
+        scorePulse.left = 1.5;
+      }
+      if (score.right > lastScore.right) {
+        scorePulse.right = 1.5;
+      }
+
+      // Trigger slow motion effect
+      slowMotion = true;
+      slowMotionEnd = Date.now() + 500;
+
+      lastScore = { left: score.left, right: score.right };
     });
 
     socket.on('gameOver', (data) => {
@@ -434,9 +528,44 @@
     function render() {
       if (!gameState || currentState !== 'PLAYING') return;
 
+      // Apply screen shake
+      ctx.save();
+      ctx.translate(shakeX, shakeY);
+
       // Clear canvas
       ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(-shakeX, -shakeY, canvas.width, canvas.height);
+
+      // Draw impact flash (full screen white overlay)
+      if (impactFlash > 0) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${impactFlash})`;
+        ctx.fillRect(-shakeX, -shakeY, canvas.width, canvas.height);
+      }
+
+      // Draw speed lines
+      speedLines.forEach(line => {
+        ctx.strokeStyle = `rgba(255, 255, 255, ${line.opacity})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(line.x, line.y);
+        ctx.lineTo(line.x + line.length, line.y);
+        ctx.stroke();
+      });
+
+      // Calculate ball speed for dynamic sizing
+      const ballSpeed = gameState.ball ? Math.sqrt(gameState.ball.vx * gameState.ball.vx + gameState.ball.vy * gameState.ball.vy) : 0;
+      const ballSizeMultiplier = Math.min(1 + (ballSpeed - 10) / 40, 1.5);
+      const dynamicBallRadius = gameState.ball.radius * ballSizeMultiplier;
+
+      // Draw enhanced ball trail
+      const maxTrailLength = Math.min(8 + Math.floor(ballSpeed / 3), 15);
+      ballTrail.forEach((pos, index) => {
+        const alpha = (index / ballTrail.length) * 0.5;
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, dynamicBallRadius * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      });
 
       // Draw center line
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
@@ -448,25 +577,106 @@
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Draw paddles (white) - only for active players
-      ctx.fillStyle = '#fff';
+      // Draw obstacles
+      if (gameState.obstacles) {
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        gameState.obstacles.forEach(obstacle => {
+          ctx.beginPath();
+          ctx.arc(obstacle.x, obstacle.y, obstacle.radius, 0, Math.PI * 2);
+          ctx.stroke();
+        });
+      }
+
+      // Draw paddles (white) with glow - only for active players
       if (gameState.activeSlots) {
         gameState.activeSlots.forEach(slot => {
           const paddle = gameState.paddles[slot];
           if (paddle) {
+            // Draw glow if active
+            if (paddleGlows[slot] && paddleGlows[slot].intensity > 0) {
+              ctx.shadowColor = '#fff';
+              ctx.shadowBlur = paddleGlows[slot].intensity * 40;
+              ctx.fillStyle = '#fff';
+            } else {
+              ctx.fillStyle = '#fff';
+              ctx.shadowBlur = 0;
+            }
             ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+            ctx.shadowBlur = 0;
           }
         });
       }
 
-      // Draw ball (white with subtle shadow)
+      // Draw particles
+      particles.forEach(p => {
+        ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Draw ball (white with subtle shadow and dynamic size)
       ctx.fillStyle = '#fff';
       ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 10 + (ballSpeed / 5);
       ctx.beginPath();
-      ctx.arc(gameState.ball.x, gameState.ball.y, gameState.ball.radius, 0, Math.PI * 2);
+      ctx.arc(gameState.ball.x, gameState.ball.y, dynamicBallRadius, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
+
+      ctx.restore();
+
+      // Update ball trail with dynamic length
+      if (gameState.ball) {
+        ballTrail.push({ x: gameState.ball.x, y: gameState.ball.y });
+        while (ballTrail.length > maxTrailLength) ballTrail.shift();
+      }
+
+      // Update speed lines
+      speedLines = speedLines.filter(line => {
+        line.x += line.speed;
+        line.opacity -= 0.05;
+        return line.opacity > 0 && line.x > -100 && line.x < canvas.width + 100;
+      });
+
+      // Update paddle glows
+      Object.keys(paddleGlows).forEach(slot => {
+        const glow = paddleGlows[slot];
+        glow.decay += 0.05;
+        glow.intensity = Math.max(0, glow.intensity - glow.decay);
+        if (glow.intensity <= 0) {
+          delete paddleGlows[slot];
+        }
+      });
+
+      // Update impact flash
+      if (impactFlash > 0) {
+        impactFlash *= 0.85;
+        if (impactFlash < 0.01) impactFlash = 0;
+      }
+
+      // Update particles
+      particles = particles.filter(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.5; // Gravity
+        p.opacity -= 0.02;
+        return p.opacity > 0;
+      });
+
+      // Update screen shake
+      if (shakeDecay > 0) {
+        shakeDecay *= 0.9;
+        shakeX = (Math.random() - 0.5) * shakeDecay;
+        shakeY = (Math.random() - 0.5) * shakeDecay;
+        if (shakeDecay < 0.5) {
+          shakeDecay = 0;
+          shakeX = 0;
+          shakeY = 0;
+        }
+      }
     }
 
     // Animation loop
@@ -474,6 +684,34 @@
       if (currentState === 'PLAYING') {
         render();
       }
+
+      // Update score pulse animation
+      const leftScoreEl = document.getElementById('leftScore');
+      const rightScoreEl = document.getElementById('rightScore');
+
+      if (scorePulse.left > 1) {
+        scorePulse.left -= 0.05;
+        leftScoreEl.style.transform = `scale(${scorePulse.left})`;
+        leftScoreEl.style.textShadow = `0 0 ${(scorePulse.left - 1) * 40}px #fff`;
+      } else {
+        leftScoreEl.style.transform = 'scale(1)';
+        leftScoreEl.style.textShadow = 'none';
+      }
+
+      if (scorePulse.right > 1) {
+        scorePulse.right -= 0.05;
+        rightScoreEl.style.transform = `scale(${scorePulse.right})`;
+        rightScoreEl.style.textShadow = `0 0 ${(scorePulse.right - 1) * 40}px #fff`;
+      } else {
+        rightScoreEl.style.transform = 'scale(1)';
+        rightScoreEl.style.textShadow = 'none';
+      }
+
+      // Check slow motion end
+      if (slowMotion && Date.now() > slowMotionEnd) {
+        slowMotion = false;
+      }
+
       requestAnimationFrame(animate);
     }
 
