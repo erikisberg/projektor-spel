@@ -25,7 +25,7 @@ const GAME_STATES = {
 const gameState = {
   state: GAME_STATES.WAITING,
   ball: {
-    x: 960,
+    x: 1280,
     y: 540,
     vx: 10,
     vy: 6,
@@ -35,8 +35,8 @@ const gameState = {
   paddles: {
     left1: { x: 40, y: 170, width: 30, height: 200, team: 'left' },
     left2: { x: 40, y: 710, width: 30, height: 200, team: 'left' },
-    right1: { x: 1850, y: 170, width: 30, height: 200, team: 'right' },
-    right2: { x: 1850, y: 710, width: 30, height: 200, team: 'right' }
+    right1: { x: 2490, y: 170, width: 30, height: 200, team: 'right' },
+    right2: { x: 2490, y: 710, width: 30, height: 200, team: 'right' }
   },
   obstacles: [],
   score: {
@@ -44,7 +44,7 @@ const gameState = {
     right: 0
   },
   activePlayers: {},  // { slot: { socketId, ready, nickname } }
-  gameWidth: 1920,
+  gameWidth: 2560,
   gameHeight: 1080,
   maxScore: 10
 };
