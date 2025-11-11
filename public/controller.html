@@ -168,6 +168,14 @@
       border-bottom: 1px solid rgba(255, 255, 255, 0.15);
     }
 
+    #teamIndicator {
+      margin-top: 8px;
+      font-size: 18px;
+      font-weight: 500;
+      color: #00ffff;
+      letter-spacing: 3px;
+    }
+
     #touchPad {
       flex: 1;
       position: relative;
@@ -264,6 +272,7 @@
   <div id="gameScreen">
     <div id="gameInfo">
       <div id="playerIndicator">YOUR PADDLE</div>
+      <div id="teamIndicator"></div>
     </div>
     <div id="touchPad">
       <div id="paddleVisual"></div>
@@ -277,6 +286,7 @@
   <script>
     const socket = io();
     let playerSlot = null;
+    let playerTeam = null;
     let isReady = false;
     let currentScreen = 'connecting';
     let paddleHeight = 100;
@@ -341,6 +351,7 @@
       isReady = false;
 
       const team = data.paddle.team;
+      playerTeam = team;
       const position = playerSlot.includes('1') ? '1' : '2';
 
       document.getElementById('playerName').textContent = `PLAYER ${position}`;
@@ -376,6 +387,11 @@
 
     // Game start
     socket.on('gameStart', () => {
+      // Update team indicator
+      if (playerTeam) {
+        const teamText = playerTeam === 'left' ? 'VÄNSTER SIDA' : 'HÖGER SIDA';
+        document.getElementById('teamIndicator').textContent = teamText;
+      }
       showScreen('game');
     });
 

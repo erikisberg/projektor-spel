@@ -46,7 +46,7 @@ const gameState = {
   activePlayers: {},  // { slot: { socketId, ready, nickname } }
   gameWidth: 2560,
   gameHeight: 1080,
-  maxScore: 10
+  maxScore: 3
 };
 
 // Queue system

@@ -180,6 +180,17 @@
       transition: transform 0.1s ease-out;
     }
 
+    #gameDomain {
+      position: absolute;
+      top: 2vh;
+      right: 3vw;
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 1.5vw;
+      font-weight: 300;
+      pointer-events: none;
+      letter-spacing: 0.1vw;
+    }
+
     /* Game Over Screen */
     #gameOverScreen {
       position: absolute;
@@ -273,6 +284,7 @@
         <span id="leftScore">0</span>
         <span id="rightScore">0</span>
       </div>
+      <div id="gameDomain"></div>
     </div>
 
     <!-- Game Over Screen -->
@@ -297,6 +309,9 @@
 
     // Display join URL on waiting screen
     document.getElementById('joinUrl').textContent = window.location.hostname;
+
+    // Display domain on game screen
+    document.getElementById('gameDomain').textContent = window.location.hostname;
 
     // Performance optimization constants
     const MAX_PARTICLES = 50;
