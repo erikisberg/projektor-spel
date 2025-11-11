@@ -629,6 +629,51 @@
         });
       }
 
+      // Draw power-ups
+      if (gameState.powerUps && gameState.powerUps.length > 0) {
+        gameState.powerUps.forEach(powerUp => {
+          // Color based on type
+          const colors = {
+            'giant-paddle': '#FFD700',      // Gold
+            'tiny-opponent': '#FF1493',     // Deep pink
+            'screen-flip': '#00FF00'        // Lime green
+          };
+
+          const color = colors[powerUp.type] || '#fff';
+
+          // Draw with pulsating glow effect
+          const pulseSpeed = 0.003;
+          const pulse = Math.sin(Date.now() * pulseSpeed) * 0.3 + 0.7;
+
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 20 * pulse;
+          ctx.fillStyle = color;
+
+          // Draw star shape
+          ctx.beginPath();
+          const spikes = 5;
+          const outerRadius = powerUp.radius;
+          const innerRadius = powerUp.radius * 0.5;
+
+          for (let i = 0; i < spikes * 2; i++) {
+            const radius = i % 2 === 0 ? outerRadius : innerRadius;
+            const angle = (i * Math.PI) / spikes - Math.PI / 2;
+            const x = powerUp.x + Math.cos(angle) * radius;
+            const y = powerUp.y + Math.sin(angle) * radius;
+
+            if (i === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+
+          ctx.closePath();
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        });
+      }
+
       // Draw paddles (white) with glow - only for active players
       if (gameState.activeSlots) {
         gameState.activeSlots.forEach(slot => {

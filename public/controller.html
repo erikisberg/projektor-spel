@@ -287,6 +287,7 @@
     const socket = io();
     let playerSlot = null;
     let playerTeam = null;
+    let screenFlipActive = false;
     let isReady = false;
     let currentScreen = 'connecting';
     let paddleHeight = 100;
@@ -395,6 +396,19 @@
       showScreen('game');
     });
 
+    // Listen for game state to check for screen-flip effect
+    socket.on('gameState', (data) => {
+      if (playerTeam && data.activeEffects) {
+        screenFlipActive = data.activeEffects[playerTeam].some(effect => effect.type === 'screen-flip');
+      }
+    });
+
+    socket.on('gameStateDelta', (data) => {
+      if (playerTeam && data.activeEffects) {
+        screenFlipActive = data.activeEffects[playerTeam].some(effect => effect.type === 'screen-flip');
+      }
+    });
+
     // Lobby timer
     socket.on('lobbyTimer', (data) => {
       const waitingCountdownEl = document.getElementById('waitingCountdown');
@@ -429,7 +443,12 @@
       const touch = event.touches ? event.touches[0] : event;
       const rect = touchPad.getBoundingClientRect();
       const touchY = touch.clientY - rect.top;
-      const relativeY = touchY / rect.height;
+      let relativeY = touchY / rect.height;
+
+      // Invert controls if screen-flip is active
+      if (screenFlipActive) {
+        relativeY = 1 - relativeY;
+      }
 
       // Calculate paddle position
       const paddleY = Math.max(0, Math.min(gameHeight - paddleHeight, relativeY * gameHeight - paddleHeight / 2));

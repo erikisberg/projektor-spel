@@ -39,6 +39,11 @@ const gameState = {
     right2: { x: 2490, y: 710, width: 30, height: 200, team: 'right' }
   },
   obstacles: [],
+  powerUps: [],
+  activeEffects: {
+    left: [],
+    right: []
+  },
   score: {
     left: 0,
     right: 0
@@ -55,6 +60,14 @@ const playerSlots = ['left1', 'right1', 'left2', 'right2']; // Alternate between
 
 // Socket ID to player mapping
 const socketToPlayer = {}; // { socketId: 'queue' | slot }
+
+// Power-up system
+let nextPowerUpSpawn = 0;
+const POWER_UP_TYPES = ['giant-paddle', 'tiny-opponent', 'screen-flip'];
+const POWER_UP_SPAWN_MIN = 20000; // 20 seconds
+const POWER_UP_SPAWN_MAX = 30000; // 30 seconds
+const POWER_UP_LIFETIME = 8000; // 8 seconds before despawn
+const POWER_UP_RADIUS = 20;
 
 // Random player name generator
 const PLAYER_NAMES = [
@@ -88,12 +101,109 @@ let previousGameState = null;
 let frameCounter = 0;
 const FULL_STATE_INTERVAL = 60; // Send full state every 60 frames (~1 second)
 
+function activatePowerUp(type, team) {
+  const now = Date.now();
+  let duration, opposingTeam;
+
+  switch (type) {
+    case 'giant-paddle':
+      duration = 10000; // 10 seconds
+      gameState.activeEffects[team].push({
+        type: 'giant-paddle',
+        expiresAt: now + duration
+      });
+      break;
+
+    case 'tiny-opponent':
+      duration = 8000; // 8 seconds
+      opposingTeam = team === 'left' ? 'right' : 'left';
+      gameState.activeEffects[opposingTeam].push({
+        type: 'tiny-paddle',
+        expiresAt: now + duration
+      });
+      break;
+
+    case 'screen-flip':
+      duration = 6000; // 6 seconds
+      opposingTeam = team === 'left' ? 'right' : 'left';
+      gameState.activeEffects[opposingTeam].push({
+        type: 'screen-flip',
+        expiresAt: now + duration
+      });
+      break;
+  }
+}
+
+function applyPaddleEffects() {
+  const now = Date.now();
+  const baseHeight = 200;
+  const baseWidth = 30;
+
+  // Remove expired effects
+  gameState.activeEffects.left = gameState.activeEffects.left.filter(effect => effect.expiresAt > now);
+  gameState.activeEffects.right = gameState.activeEffects.right.filter(effect => effect.expiresAt > now);
+
+  // Apply effects to paddles
+  Object.keys(gameState.paddles).forEach(slot => {
+    const paddle = gameState.paddles[slot];
+    const team = paddle.team;
+    let heightMultiplier = 1;
+
+    // Check for giant paddle effect
+    if (gameState.activeEffects[team].some(e => e.type === 'giant-paddle')) {
+      heightMultiplier = 2;
+    }
+
+    // Check for tiny paddle effect
+    if (gameState.activeEffects[team].some(e => e.type === 'tiny-paddle')) {
+      heightMultiplier = 0.5;
+    }
+
+    // Apply height
+    paddle.height = baseHeight * heightMultiplier;
+    paddle.width = baseWidth;
+
+    // Clamp paddle position to stay within bounds
+    paddle.y = Math.max(0, Math.min(gameState.gameHeight - paddle.height, paddle.y));
+  });
+}
+
 function updateGame() {
   // Only update physics when playing
   if (gameState.state !== GAME_STATES.PLAYING) return;
 
   const ball = gameState.ball;
   const paddles = gameState.paddles;
+
+  // Apply active power-up effects to paddles
+  applyPaddleEffects();
+
+  // Power-up spawn logic
+  const now = Date.now();
+  if (gameState.powerUps.length === 0 && now >= nextPowerUpSpawn) {
+    const randomType = POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)];
+    const randomY = 100 + Math.random() * (gameState.gameHeight - 200); // Keep away from edges
+
+    const powerUp = {
+      id: `powerup-${now}`,
+      type: randomType,
+      x: gameState.gameWidth / 2,
+      y: randomY,
+      radius: POWER_UP_RADIUS,
+      spawnTime: now
+    };
+
+    gameState.powerUps.push(powerUp);
+
+    // Schedule next spawn in 20-30 seconds
+    const nextSpawnDelay = POWER_UP_SPAWN_MIN + Math.random() * (POWER_UP_SPAWN_MAX - POWER_UP_SPAWN_MIN);
+    nextPowerUpSpawn = now + nextSpawnDelay;
+  }
+
+  // Remove expired power-ups
+  gameState.powerUps = gameState.powerUps.filter(powerUp => {
+    return now - powerUp.spawnTime < POWER_UP_LIFETIME;
+  });
 
   // Move ball
   ball.x += ball.vx;
@@ -161,6 +271,33 @@ function updateGame() {
     }
   });
 
+  // Power-up collision detection
+  gameState.powerUps.forEach((powerUp, index) => {
+    // Circle-to-circle collision (ball and power-up)
+    const dx = ball.x - powerUp.x;
+    const dy = ball.y - powerUp.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < ball.radius + powerUp.radius) {
+      // Determine which team gets the power-up based on ball direction
+      const collectingTeam = ball.vx > 0 ? 'left' : 'right';
+
+      // Activate power-up effect
+      activatePowerUp(powerUp.type, collectingTeam);
+
+      // Remove power-up from array
+      gameState.powerUps.splice(index, 1);
+
+      // Notify clients
+      io.to('displays').emit('powerUpCollected', {
+        type: powerUp.type,
+        team: collectingTeam,
+        x: powerUp.x,
+        y: powerUp.y
+      });
+    }
+  });
+
   // Scoring - ball goes past left/right edge
   if (ball.x - ball.radius <= 0) {
     gameState.score.right++;
@@ -185,12 +322,16 @@ function updateGame() {
       paddles: gameState.paddles,
       score: gameState.score,
       activeSlots: Object.keys(gameState.activePlayers),
-      obstacles: gameState.obstacles
+      obstacles: gameState.obstacles,
+      powerUps: gameState.powerUps,
+      activeEffects: gameState.activeEffects
     });
   } else {
     // Send delta (ball always changes, only send paddles that moved)
     const delta = {
-      ball: gameState.ball  // Ball almost always moves
+      ball: gameState.ball,  // Ball almost always moves
+      powerUps: gameState.powerUps,  // Always send power-ups (they spawn/despawn)
+      activeEffects: gameState.activeEffects  // Always send active effects
     };
 
     // Check which paddles moved
