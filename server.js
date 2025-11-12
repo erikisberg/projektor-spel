@@ -2,8 +2,42 @@ const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http);
+const fs = require('fs');
+const path = require('path');
 
 const PORT = process.env.PORT || 3000;
+
+// Load configuration
+let config = { displayScale: 0.6 }; // Default
+try {
+  const configPath = path.join(__dirname, 'config.json');
+  if (fs.existsSync(configPath)) {
+    const configData = fs.readFileSync(configPath, 'utf8');
+    config = JSON.parse(configData);
+    console.log(`Loaded config: displayScale=${config.displayScale}`);
+  }
+} catch (err) {
+  console.error('Error loading config.json, using defaults:', err.message);
+}
+
+const DISPLAY_SCALE = config.displayScale || 0.6;
+
+// Base dimensions (unscaled)
+const BASE_GAME_WIDTH = 2560;
+const BASE_GAME_HEIGHT = 1080;
+const BASE_PADDLE_WIDTH = 30;
+const BASE_PADDLE_HEIGHT = 200;
+const BASE_BALL_RADIUS = 20;
+const BASE_POWER_UP_RADIUS = 20;
+
+// Scaled dimensions
+const GAME_WIDTH = BASE_GAME_WIDTH;  // Canvas resolution stays the same
+const GAME_HEIGHT = BASE_GAME_HEIGHT;
+const PADDLE_WIDTH = BASE_PADDLE_WIDTH * DISPLAY_SCALE;
+const PADDLE_HEIGHT = BASE_PADDLE_HEIGHT * DISPLAY_SCALE;
+const BALL_RADIUS = BASE_BALL_RADIUS * DISPLAY_SCALE;
+const POWER_UP_RADIUS = BASE_POWER_UP_RADIUS * DISPLAY_SCALE;
+const PADDLE_EDGE_OFFSET = 40 * DISPLAY_SCALE;
 
 // Serve static files
 app.use(express.static('public'));
@@ -25,18 +59,18 @@ const GAME_STATES = {
 const gameState = {
   state: GAME_STATES.WAITING,
   ball: {
-    x: 1280,
-    y: 540,
-    vx: 10,
-    vy: 6,
-    radius: 20,
-    speed: 10
+    x: GAME_WIDTH / 2,
+    y: GAME_HEIGHT / 2,
+    vx: 10 * DISPLAY_SCALE,
+    vy: 6 * DISPLAY_SCALE,
+    radius: BALL_RADIUS,
+    speed: 10 * DISPLAY_SCALE
   },
   paddles: {
-    left1: { x: 40, y: 170, width: 30, height: 200, team: 'left' },
-    left2: { x: 40, y: 710, width: 30, height: 200, team: 'left' },
-    right1: { x: 2490, y: 170, width: 30, height: 200, team: 'right' },
-    right2: { x: 2490, y: 710, width: 30, height: 200, team: 'right' }
+    left1: { x: PADDLE_EDGE_OFFSET, y: 170, width: PADDLE_WIDTH, height: PADDLE_HEIGHT, team: 'left' },
+    left2: { x: PADDLE_EDGE_OFFSET, y: 710, width: PADDLE_WIDTH, height: PADDLE_HEIGHT, team: 'left' },
+    right1: { x: GAME_WIDTH - PADDLE_EDGE_OFFSET - PADDLE_WIDTH, y: 170, width: PADDLE_WIDTH, height: PADDLE_HEIGHT, team: 'right' },
+    right2: { x: GAME_WIDTH - PADDLE_EDGE_OFFSET - PADDLE_WIDTH, y: 710, width: PADDLE_WIDTH, height: PADDLE_HEIGHT, team: 'right' }
   },
   obstacles: [],
   powerUps: [],
@@ -49,8 +83,9 @@ const gameState = {
     right: 0
   },
   activePlayers: {},  // { slot: { socketId, ready, nickname } }
-  gameWidth: 2560,
-  gameHeight: 1080,
+  gameWidth: GAME_WIDTH,
+  gameHeight: GAME_HEIGHT,
+  displayScale: DISPLAY_SCALE,  // Send to clients
   maxScore: 3
 };
 
@@ -67,7 +102,6 @@ const POWER_UP_TYPES = ['giant-paddle', 'tiny-opponent', 'screen-flip'];
 const POWER_UP_SPAWN_MIN = 20000; // 20 seconds
 const POWER_UP_SPAWN_MAX = 30000; // 30 seconds
 const POWER_UP_LIFETIME = 8000; // 8 seconds before despawn
-const POWER_UP_RADIUS = 20;
 
 // Random player name generator
 const PLAYER_NAMES = [
@@ -136,8 +170,6 @@ function activatePowerUp(type, team) {
 
 function applyPaddleEffects() {
   const now = Date.now();
-  const baseHeight = 200;
-  const baseWidth = 30;
 
   // Remove expired effects
   gameState.activeEffects.left = gameState.activeEffects.left.filter(effect => effect.expiresAt > now);
@@ -159,9 +191,9 @@ function applyPaddleEffects() {
       heightMultiplier = 0.5;
     }
 
-    // Apply height
-    paddle.height = baseHeight * heightMultiplier;
-    paddle.width = baseWidth;
+    // Apply height (use scaled base height)
+    paddle.height = PADDLE_HEIGHT * heightMultiplier;
+    paddle.width = PADDLE_WIDTH;
 
     // Clamp paddle position to stay within bounds
     paddle.y = Math.max(0, Math.min(gameState.gameHeight - paddle.height, paddle.y));
@@ -182,7 +214,8 @@ function updateGame() {
   const now = Date.now();
   if (gameState.powerUps.length === 0 && now >= nextPowerUpSpawn) {
     const randomType = POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)];
-    const randomY = 100 + Math.random() * (gameState.gameHeight - 200); // Keep away from edges
+    const edgeMargin = 100 * DISPLAY_SCALE; // Keep away from edges
+    const randomY = edgeMargin + Math.random() * (gameState.gameHeight - edgeMargin * 2);
 
     const powerUp = {
       id: `powerup-${now}`,
@@ -253,7 +286,7 @@ function updateGame() {
       }
 
       // Cap maximum speed to prevent tunneling through paddles
-      const maxSpeed = 25;
+      const maxSpeed = 25 * DISPLAY_SCALE;
       const currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
       if (currentSpeed > maxSpeed) {
         const ratio = maxSpeed / currentSpeed;
@@ -360,9 +393,9 @@ function updateGame() {
 function resetBall(direction) {
   gameState.ball.x = gameState.gameWidth / 2;
   gameState.ball.y = gameState.gameHeight / 2;
-  gameState.ball.speed = 10;
-  gameState.ball.vx = direction === 'left' ? -10 : 10;
-  gameState.ball.vy = (Math.random() - 0.5) * 12;
+  gameState.ball.speed = 10 * DISPLAY_SCALE;
+  gameState.ball.vx = direction === 'left' ? -10 * DISPLAY_SCALE : 10 * DISPLAY_SCALE;
+  gameState.ball.vy = (Math.random() - 0.5) * 12 * DISPLAY_SCALE;
 }
 
 function checkWin() {
@@ -567,6 +600,11 @@ io.on('connection', (socket) => {
   socket.on('joinDisplay', () => {
     socket.join('displays');
     console.log(`Display client ${socket.id} joined displays room`);
+
+    // Send display configuration to the display client
+    socket.emit('displayConfig', {
+      displayScale: DISPLAY_SCALE
+    });
   });
 
   // Player wants to join

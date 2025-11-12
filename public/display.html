@@ -19,12 +19,13 @@
       min-height: 100vh;
       font-family: 'Helvetica Neue', Arial, sans-serif;
       overflow: hidden;
+      --display-scale: 0.6; /* Default, will be set by JS */
     }
 
     #gameContainer {
       position: relative;
-      width: 100vw;
-      height: 100vh;
+      width: calc(100vw * var(--display-scale));
+      height: calc(100vh * var(--display-scale));
       background: #000;
       border: 4px solid #fff;
     }
@@ -41,7 +42,7 @@
       position: absolute;
       top: 2vh;
       left: 2vw;
-      height: 6vh;
+      height: calc(6vh * var(--display-scale));
       opacity: 0.9;
       z-index: 100;
     }
@@ -62,16 +63,31 @@
     }
 
     #waitingScreen h1 {
-      font-size: 15vw;
+      font-size: calc(15vw * var(--display-scale));
       font-weight: 300;
       margin-bottom: 40px;
-      letter-spacing: 1vw;
+      letter-spacing: calc(1vw * var(--display-scale));
     }
 
     #waitingScreen p {
-      font-size: 4vw;
+      font-size: calc(4vw * var(--display-scale));
       font-weight: 300;
       animation: pulse 2s infinite;
+    }
+
+    #joinUrl {
+      font-size: calc(6vw * var(--display-scale));
+      margin-top: 60px;
+      font-weight: 500;
+      letter-spacing: calc(0.3vw * var(--display-scale));
+      opacity: 0.9;
+    }
+
+    #countdown {
+      font-size: calc(64px * var(--display-scale));
+      margin-top: 40px;
+      font-weight: 200;
+      display: none;
     }
 
     @keyframes pulse {
@@ -93,12 +109,12 @@
     }
 
     #lobbyScreen h1 {
-      font-size: 6vw;
+      font-size: calc(6vw * var(--display-scale));
       font-weight: 300;
       text-align: center;
       padding: 30px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-      letter-spacing: 0.3vw;
+      letter-spacing: calc(0.3vw * var(--display-scale));
     }
 
     #playerList {
@@ -116,12 +132,12 @@
     }
 
     .team-column h2 {
-      font-size: 3vw;
+      font-size: calc(3vw * var(--display-scale));
       font-weight: 400;
       text-align: center;
       padding-bottom: 20px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-      letter-spacing: 0.2vw;
+      letter-spacing: calc(0.2vw * var(--display-scale));
     }
 
     .player-slot {
@@ -129,7 +145,7 @@
       background: rgba(255, 255, 255, 0.05);
       border: 2px solid rgba(255, 255, 255, 0.2);
       border-radius: 2px;
-      font-size: 2.5vw;
+      font-size: calc(2.5vw * var(--display-scale));
       font-weight: 300;
       text-align: center;
       transition: all 0.3s ease;
@@ -145,10 +161,10 @@
     #readyStatus {
       text-align: center;
       padding: 30px;
-      font-size: 3.5vw;
+      font-size: calc(3.5vw * var(--display-scale));
       font-weight: 300;
       border-top: 1px solid rgba(255, 255, 255, 0.2);
-      letter-spacing: 0.2vw;
+      letter-spacing: calc(0.2vw * var(--display-scale));
     }
 
     /* Game Screen */
@@ -169,10 +185,10 @@
       display: flex;
       justify-content: space-around;
       color: #fff;
-      font-size: 8vw;
+      font-size: calc(8vw * var(--display-scale));
       font-weight: 200;
       pointer-events: none;
-      letter-spacing: 0.5vw;
+      letter-spacing: calc(0.5vw * var(--display-scale));
     }
 
     #scoreBoard span {
@@ -185,10 +201,10 @@
       top: 2vh;
       right: 3vw;
       color: rgba(255, 255, 255, 0.4);
-      font-size: 1.5vw;
+      font-size: calc(1.5vw * var(--display-scale));
       font-weight: 300;
       pointer-events: none;
-      letter-spacing: 0.1vw;
+      letter-spacing: calc(0.1vw * var(--display-scale));
     }
 
     /* Game Over Screen */
@@ -211,9 +227,9 @@
     }
 
     #winnerText {
-      font-size: 6vw;
+      font-size: calc(6vw * var(--display-scale));
       font-weight: 300;
-      letter-spacing: 0.3vw;
+      letter-spacing: calc(0.3vw * var(--display-scale));
       animation: winner-pulse 0.5s ease-in-out 3;
       text-align: center;
       padding: 0 2vw;
@@ -225,7 +241,7 @@
     }
 
     #gameOverScreen .subtitle {
-      font-size: 2vw;
+      font-size: calc(2vw * var(--display-scale));
       font-weight: 300;
       margin-top: 3vh;
       animation: pulse 1.5s infinite;
@@ -255,8 +271,8 @@
     <div id="waitingScreen">
       <h1>PONG</h1>
       <p id="waitingText">Waiting for players...</p>
-      <div id="joinUrl" style="font-size: 6vw; margin-top: 60px; font-weight: 500; letter-spacing: 0.3vw; opacity: 0.9;"></div>
-      <div id="countdown" style="font-size: 64px; margin-top: 40px; font-weight: 200; display: none;"></div>
+      <div id="joinUrl"></div>
+      <div id="countdown"></div>
     </div>
 
     <!-- Lobby Screen -->
@@ -368,6 +384,12 @@
     }
 
     // Socket listeners
+    socket.on('displayConfig', (config) => {
+      // Set display scale CSS variable
+      document.body.style.setProperty('--display-scale', config.displayScale);
+      console.log(`Display scale set to ${config.displayScale}`);
+    });
+
     socket.on('stateChange', (data) => {
       showScreen(data.state);
     });

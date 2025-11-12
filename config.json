@@ -1,0 +1,4 @@
+{
+  "displayScale": 0.6,
+  "comment": "displayScale controls the size of the game canvas and all elements. 0.6 = 60% of viewport (good for projection). Range: 0.1-1.0"
+}
